@@ -3,9 +3,10 @@
 This program will help you see packets going through your iptables rules. It supports:
 
 * Both IPv4 & IPv6 ;
-* Only support iptables for now (neither iptables-nft nor nftables are supported) ;
+* Only supports iptables for now (neither iptables-nft nor nftables are supported) ;
 * Has a `-filter` flag that supports cBPF filter syntax ;
 * Can filter based on input/output interface (see `-iface` flag) ;
+* Prints packets' L2, L3 and L4 headers, including ICMP and ICMPv6 ;
 
 ## Install
 
@@ -20,9 +21,12 @@ Build: `make`. The binary file will be located in bin/.
 Example:
 
 ```console
-# iptables-tracer -filter='tcp port 8080'
-# iptables-tracer -family ipv6 filter='icmp6'
-# iptables-tracer -help
+# Note that you might need to insert the nfnetlink_log kernel module first
+$ sudo modprobe nfnetlink_log 
+
+$ sudo iptables-tracer -filter='tcp port 8080'
+$ sudo iptables-tracer -family ipv6 filter='icmp6'
+$ iptables-tracer -help
 Usage of iptables-tracer:
   -family string
     	Either: ipv4 or ipv6 (default "ipv4")
@@ -40,4 +44,11 @@ Usage of iptables-tracer:
     	Whether physin/physout should be printed
   -print-raw
     	Whether raw iptables rules should be printed when packets hit them (default true)
+```
+
+One-liners:
+
+```console
+# Trace only IPv6 Neighbor Solicitation & Neighbor Advertisment 
+$  sudo iptables-tracer -family ipv6 -iface=br-21502e5b2c6c -filter='icmp6 and (ip6[40] == 135 || ip6[40] == 136)'
 ```

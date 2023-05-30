@@ -74,7 +74,6 @@ func addIptRule(family IPFamily, dir Direction, iface string, filter Filter) (Ru
 		iptArgs = append(iptArgs, ifaceFlag, iface)
 	}
 
-	// TODO: use a fwmark to make it possible to run multiple tracers concurrently
 	if len(filter.Bytecode) > 0 {
 		iptArgs = append(
 			iptArgs,

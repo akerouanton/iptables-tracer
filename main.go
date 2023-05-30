@@ -94,11 +94,24 @@ func parseFlags() Config {
 		ifaces = strings.Split(flagIface, ",")
 	}
 
+	chains := make([][]string, 0)
+	if flagFilterChain != "" {
+		for _, part := range strings.Split(flagFilterChain, ",") {
+			subparts := strings.Split(part, "/")
+			if len(subparts) != 2 {
+				fmt.Fprintf(os.Stderr, "ERROR: chain filter %q is badly formated. Format: <table>/<chain>.", part)
+				os.Exit(1)
+			}
+			chains = append(chains, subparts)
+		}
+	}
+
 	return Config{
 		IPFamily:  IPFamily(flagFamily),
 		Filter:    filter,
-		NetnsPath: netnsPath,
 		Ifaces:    ifaces,
+		Chains:    chains,
+		NetnsPath: netnsPath,
 		FlushRaw:  flagFlushRaw,
 		PrintRaw:  flagPrintRaw,
 		PrintPhys: flagPrintPhys,
@@ -106,10 +119,11 @@ func parseFlags() Config {
 }
 
 var (
-	flagFamily   string
-	flagFilter   string
-	flagIface    string
-	flagFlushRaw bool
+	flagFamily      string
+	flagFilter      string
+	flagIface       string
+	flagFilterChain string
+	flagFlushRaw    bool
 	// TODO: check if that's working properly (we probably need to execute
 	// iptables in the netns but not nflog)
 	flagNetns     string
@@ -121,8 +135,9 @@ var (
 type Config struct {
 	IPFamily  IPFamily
 	Filter    Filter
-	NetnsPath string
 	Ifaces    []string
+	Chains    [][]string
+	NetnsPath string
 	// Whether raw table should be flushed before adding our own rules
 	FlushRaw bool
 	// Whether raw ipt rules should be printed when packets hit them
@@ -137,6 +152,7 @@ func main() {
 	flag.StringVar(&flagFamily, "family", string(AfInet4), "Either: ipv4 or ipv6")
 	flag.StringVar(&flagFilter, "filter", "", "A cBPF filter to select specific packets")
 	flag.StringVar(&flagIface, "iface", "", "Only trace packets coming from/to specific interface(s). Use a comma to specify multiple interfaces.")
+	flag.StringVar(&flagFilterChain, "filter-chain", "", "Print only ipt decisions for given table/chains. Use a comma to specify multiple chains.")
 	flag.BoolVar(&flagFlushRaw, "flush", true, "Whether the RAW chains should be flushed before adding tracing rules.")
 	flag.StringVar(&flagNetns, "netns", "", "Path to a netns handle where the tracer should be executed")
 	flag.BoolVar(&flagPrintRaw, "print-raw", true, "Whether raw iptables rules should be printed when packets hit them")
@@ -196,6 +212,7 @@ func main() {
 		// "nfnetlink_log always uses group 0"
 		Group:    0,
 		Copymode: nflog.CopyPacket,
+		Bufsize:  65536,
 	})
 	if err != nil {
 		logrus.Error(err)
@@ -223,7 +240,16 @@ func main() {
 			pr.printPacketHeaders(traceEvt, cfg.IPFamily, ifaceCache)
 		}
 
-		pr.printIptRule(traceEvt, cfg.IPFamily)
+		if len(cfg.Chains) == 0 {
+			pr.printIptRule(traceEvt, cfg.IPFamily)
+			return 0
+		}
+
+		for _, filter := range cfg.Chains {
+			if traceEvt.tableName == filter[0] && traceEvt.chainName == filter[1] {
+				pr.printIptRule(traceEvt, cfg.IPFamily)
+			}
+		}
 
 		return 0
 	}
