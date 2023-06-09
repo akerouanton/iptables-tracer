@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"strings"
@@ -146,6 +147,14 @@ type Config struct {
 	PrintPhys bool
 }
 
+func insNfNetlinkLog() {
+	cmd := exec.Command("modprobe", "nfnetlink_log")
+	err := cmd.Run()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+}
+
 func main() {
 	// TODO: add a way to filter in/out specific ipt tables/chains
 	// TODO: support tracing both AF at the same time
@@ -161,6 +170,9 @@ func main() {
 	flag.Parse()
 
 	cfg := parseFlags()
+
+	insNfNetlinkLog()
+
 	if cfg.NetnsPath != "" {
 		handle, err := netns.GetFromPath(cfg.NetnsPath)
 		if err != nil {
