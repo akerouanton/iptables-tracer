@@ -7,6 +7,7 @@ This program will help you see packets going through your iptables rules. It sup
 * Has a `-filter` flag that supports cBPF filter syntax ;
 * Can filter based on input/output interface (see `-iface` flag) ;
 * Prints packets' L2, L3 and L4 headers, including ICMP and ICMPv6 ;
+* Automatically inserts the kernel module `nfnetlink_log` ;
 
 ## Install
 
@@ -21,9 +22,6 @@ Build: `make`. The binary file will be located in bin/.
 Example:
 
 ```console
-# Note that you might need to insert the nfnetlink_log kernel module first
-$ sudo modprobe nfnetlink_log 
-
 $ sudo iptables-tracer -filter='tcp port 8080'
 $ sudo iptables-tracer -family ipv6 filter='icmp6'
 $ iptables-tracer -help
@@ -32,6 +30,8 @@ Usage of iptables-tracer:
     	Either: ipv4 or ipv6 (default "ipv4")
   -filter string
     	A cBPF filter to select specific packets
+  -filter-chain string
+    	Print only ipt decisions for given table/chains. Use a comma to specify multiple chains.
   -flush
     	Whether the RAW chains should be flushed before adding tracing rules. (default true)
   -iface string
