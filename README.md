@@ -50,5 +50,8 @@ One-liners:
 
 ```console
 # Trace only IPv6 Neighbor Solicitation & Neighbor Advertisment 
-$  sudo iptables-tracer -family ipv6 -iface=br-21502e5b2c6c -filter='icmp6 and (ip6[40] == 135 || ip6[40] == 136)'
+$ sudo iptables-tracer -family ipv6 -iface=br-21502e5b2c6c -filter='icmp6 and (ip6[40] == 135 || ip6[40] == 136)'
+
+# Execute iptables-tracer into a specific container
+$ sudo iptables-tracer -netns="$(docker inspect --format='{{ .NetworkSettings.SandboxKey }}' tender_merkle)" -family ipv6
 ```
