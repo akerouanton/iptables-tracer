@@ -43,15 +43,15 @@ func (cache *IfaceCache) Watch(ctx context.Context) error {
 }
 
 // IndexToName is the equivalent of nlif_index2name from libnfnetlink
-func (cache *IfaceCache) IndexToName(id *uint32) (string, bool) {
-	if id == nil {
+func (cache *IfaceCache) IndexToName(id uint32) (string, bool) {
+	if id == 0 {
 		return "", true
 	}
 
 	cache.mu.RLock()
 	defer cache.mu.RUnlock()
 
-	link, ok := cache.ifaces[int(*id)]
+	link, ok := cache.ifaces[int(id)]
 	if !ok {
 		return "", false
 	}

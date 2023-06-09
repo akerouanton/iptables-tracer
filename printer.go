@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"github.com/sirupsen/logrus"
 )
 
@@ -15,20 +13,20 @@ type Printer struct {
 	printRaw bool
 	// Whether physin/physout should be printed
 	printPhys bool
+	// Whether ifaces should be tracked and changes printed
+	printIfaceChanges bool
 
-	// Cache the gopacket.LayerClass used internally to print packets' L4
-	l4Class gopacket.LayerClass
+	ifaceCache   *IfaceCache
+	ifaceTracker map[packet][2]uint32
 }
 
-func NewPrinter(cfg Config) Printer {
-	l4Class := make([]gopacket.LayerType, 0)
-	l4Class = append(l4Class, layers.LayerClassIPTransport.LayerTypes()...)
-	l4Class = append(l4Class, layers.LayerClassIPControl.LayerTypes()...)
-
+func NewPrinter(cfg Config, ifaceCache *IfaceCache) Printer {
 	return Printer{
-		printRaw:  cfg.PrintRaw,
-		printPhys: cfg.PrintPhys,
-		l4Class:   gopacket.NewLayerClass(l4Class),
+		printRaw:          cfg.PrintRaw,
+		printPhys:         cfg.PrintPhys,
+		printIfaceChanges: cfg.PrintIfaceChanges,
+		ifaceCache:        ifaceCache,
+		ifaceTracker:      map[packet][2]uint32{},
 	}
 }
 
@@ -38,9 +36,30 @@ func (pr Printer) printIptRule(traceEvt traceEvent, family IPFamily) {
 
 	// TODO: check if the NFMARK is really available through Mark
 	if traceEvt.attrs.Mark != nil {
-		b.WriteString(fmt.Sprintf("NFMARK=0x%x ", *traceEvt.attrs.Mark))
+		b.WriteString(fmt.Sprintf("NFMARK=0x%x ", traceEvt.nfMark))
 	} else {
 		b.WriteString("NFMARK=0x0 ")
+	}
+
+	// TODO: improve this // IN and OUT are always displayed when one changes
+	ifaces := traceEvt.ifaces()
+	trackedIfaces := pr.ifaceTracker[traceEvt.pkt]
+	if pr.printIfaceChanges {
+		var changed bool
+		if trackedIfaces[0] != ifaces[0] {
+			indev, _ := pr.ifaceCache.IndexToName(traceEvt.inDev)
+			b.WriteString(fmt.Sprintf("IN=%s ", indev))
+			changed = true
+		}
+		if trackedIfaces[1] != ifaces[1] {
+			outdev, _ := pr.ifaceCache.IndexToName(traceEvt.outDev)
+			b.WriteString(fmt.Sprintf("OUT=%s ", outdev))
+			changed = true
+		}
+		if changed {
+			pr.ifaceTracker[traceEvt.pkt] = ifaces
+			b.WriteString("(changed by last rule)")
+		}
 	}
 
 	b.WriteString("\n")
@@ -83,101 +102,23 @@ func (pr Printer) printIptRule(traceEvt traceEvent, family IPFamily) {
 	fmt.Println(b.String())
 }
 
-func (pr Printer) printPacketHeaders(traceEvt traceEvent, family IPFamily, ifaceCache *IfaceCache) {
+func (pr Printer) printPacketHeaders(traceEvt traceEvent) {
 	b := strings.Builder{}
 
-	indev, _ := ifaceCache.IndexToName(traceEvt.attrs.InDev)
-	outdev, _ := ifaceCache.IndexToName(traceEvt.attrs.OutDev)
+	if pr.printIfaceChanges {
+		pr.ifaceTracker[traceEvt.pkt] = traceEvt.ifaces()
+	}
+
+	indev, _ := pr.ifaceCache.IndexToName(traceEvt.inDev)
+	outdev, _ := pr.ifaceCache.IndexToName(traceEvt.outDev)
 	b.WriteString(fmt.Sprintf("IN=%s OUT=%s ", indev, outdev))
 
 	if pr.printPhys {
-		physindev, _ := ifaceCache.IndexToName(traceEvt.attrs.PhysInDev)
-		physoutdev, _ := ifaceCache.IndexToName(traceEvt.attrs.PhysOutDev)
+		physindev, _ := pr.ifaceCache.IndexToName(traceEvt.physInDev)
+		physoutdev, _ := pr.ifaceCache.IndexToName(traceEvt.physOutDev)
 		b.WriteString(fmt.Sprintf("PHYSIN=%s PHYSOUT=%s ", physindev, physoutdev))
 	}
 
-	var firstLayer gopacket.Decoder
-	if family == AfInet4 {
-		firstLayer = layers.LayerTypeIPv4
-	} else {
-		firstLayer = layers.LayerTypeIPv6
-	}
-
-	packet := gopacket.NewPacket(*traceEvt.attrs.Payload, firstLayer, gopacket.DecodeOptions{
-		NoCopy: true,
-		Lazy:   true,
-	})
-
-	l3 := packet.NetworkLayer()
-	switch l3.(type) {
-	case *layers.IPv4:
-		ipv4 := l3.(*layers.IPv4)
-		b.WriteString(fmt.Sprintf(
-			"SRC=%s DST=%s LEN=%d TOS=%02x TTL=%d ID=%d PROTO=%s ",
-			ipv4.SrcIP, ipv4.DstIP, ipv4.Length, ipv4.TOS, ipv4.TTL, ipv4.Id, ipv4.Protocol))
-	case *layers.IPv6:
-		ipv6 := l3.(*layers.IPv6)
-		b.WriteString(fmt.Sprintf(
-			"SRC=%s DST=%s LEN=%d HOP=%d ",
-			ipv6.SrcIP, ipv6.DstIP, ipv6.Length, ipv6.HopLimit))
-
-		if ipv6.NextHeader == layers.IPProtocolTCP ||
-			ipv6.NextHeader == layers.IPProtocolUDP ||
-			ipv6.NextHeader == layers.IPProtocolICMPv6 {
-			b.WriteString(fmt.Sprintf("PROTO=%s ", ipv6.NextHeader))
-		}
-	default:
-		logrus.Warn("Could not parse network layer")
-	}
-
-	l4 := packet.LayerClass(pr.l4Class)
-	switch l4.(type) {
-	case *layers.TCP:
-		tcp := l4.(*layers.TCP)
-		flags := tcpFlags(tcp)
-		b.WriteString(fmt.Sprintf(
-			"SPT=%d DPT=%d FLAGS=%s SEQ=%d CSUM=%x ",
-			tcp.SrcPort, tcp.DstPort, strings.Join(flags, ","), tcp.Seq, tcp.Checksum))
-	case *layers.UDP:
-		udp := l4.(*layers.UDP)
-		b.WriteString(fmt.Sprintf("SPT=%d DPT=%d CSUM=%x ",
-			udp.SrcPort, udp.DstPort, udp.Checksum))
-	case *layers.ICMPv4:
-		icmp := l4.(*layers.ICMPv4)
-		b.WriteString(fmt.Sprintf("TYPE/CODE=%s CSUM=%x ",
-			icmp.TypeCode, icmp.Checksum))
-	case *layers.ICMPv6:
-		icmp := l4.(*layers.ICMPv6)
-		b.WriteString(fmt.Sprintf("TYPE/CODE=%s CSUM=%x ",
-			icmp.TypeCode, icmp.Checksum))
-	default:
-		logrus.Warnf("Could not parse transport layer: %+v", l4)
-	}
-
+	b.WriteString(traceEvt.pkt.Headers())
 	fmt.Println(b.String())
-}
-
-func tcpFlags(tp *layers.TCP) []string {
-	flags := make([]string, 0)
-
-	if tp.SYN {
-		flags = append(flags, "SYN")
-	}
-	if tp.RST {
-		flags = append(flags, "RST")
-	}
-	if tp.FIN {
-		flags = append(flags, "FIN")
-	}
-	if tp.PSH {
-		flags = append(flags, "PSH")
-	}
-	if tp.ACK {
-		flags = append(flags, "ACK")
-	}
-	if tp.URG {
-		flags = append(flags, "URG")
-	}
-
-	return flags
 }

@@ -109,41 +109,45 @@ func parseFlags() Config {
 	}
 
 	return Config{
-		IPFamily:  IPFamily(flagFamily),
-		Filter:    filter,
-		Ifaces:    ifaces,
-		Chains:    chains,
-		NetnsPath: netnsPath,
-		FlushRaw:  flagFlushRaw,
-		PrintRaw:  flagPrintRaw,
-		PrintPhys: flagPrintPhys,
+		IPFamily:          IPFamily(flagFamily),
+		Filter:            filter,
+		FilterIfaces:      ifaces,
+		FilterChains:      chains,
+		NetnsPath:         netnsPath,
+		FlushRaw:          flagFlushRaw,
+		PrintRaw:          flagPrintRaw,
+		PrintPhys:         flagPrintPhys,
+		PrintIfaceChanges: flagPrintIfaceChanges,
 	}
 }
 
 var (
-	flagFamily      string
-	flagFilter      string
-	flagIface       string
-	flagFilterChain string
-	flagFlushRaw    bool
-	flagNetns       string
-	flagPrintRaw    bool
-	flagPrintPhys   bool
-	flagLogLvl      string
+	flagFamily            string
+	flagFilter            string
+	flagIface             string
+	flagFilterChain       string
+	flagFlushRaw          bool
+	flagNetns             string
+	flagPrintRaw          bool
+	flagPrintPhys         bool
+	flagPrintIfaceChanges bool
+	flagLogLvl            string
 )
 
 type Config struct {
-	IPFamily  IPFamily
-	Filter    Filter
-	Ifaces    []string
-	Chains    [][]string
-	NetnsPath string
+	IPFamily     IPFamily
+	Filter       Filter
+	FilterIfaces []string
+	FilterChains [][]string
+	NetnsPath    string
 	// Whether raw table should be flushed before adding our own rules
 	FlushRaw bool
 	// Whether raw ipt rules should be printed when packets hit them
 	PrintRaw bool
 	// Whether physin/physout should be printed
 	PrintPhys bool
+	// Whether interface changes should be printed. WARNING: memory will grow unbounded.
+	PrintIfaceChanges bool
 }
 
 func insNfNetlinkLog() {
@@ -190,6 +194,7 @@ func main() {
 	flag.StringVar(&flagNetns, "netns", "", "Path to a netns handle where the tracer should be executed")
 	flag.BoolVar(&flagPrintRaw, "print-raw", true, "Whether raw iptables rules should be printed when packets hit them")
 	flag.BoolVar(&flagPrintPhys, "print-phys", false, "Whether physin/physout should be printed")
+	flag.BoolVar(&flagPrintIfaceChanges, "print-iface-changes", true, "Whether iface changes should be printed. WARNING: memory will grow unbounded.")
 	flag.StringVar(&flagLogLvl, "log-level", "info", "Log level (panic, fatal, error, warn, info, debug or trace)")
 	flag.Parse()
 
@@ -225,7 +230,7 @@ func main() {
 		}
 	}
 
-	reverters, err := setupIptRules(cfg.IPFamily, cfg.FlushRaw, cfg.Ifaces, cfg.Filter)
+	reverters, err := setupIptRules(cfg.IPFamily, cfg.FlushRaw, cfg.FilterIfaces, cfg.Filter)
 	if err != nil {
 		logrus.Error(err)
 
@@ -258,12 +263,14 @@ func main() {
 	}
 	defer nf.Close()
 
-	pr := NewPrinter(cfg)
+	d := NewPacketDecoder()
+
+	pr := NewPrinter(cfg, ifaceCache)
 	printer := func(attrs nflog.Attribute) int {
 		logrus.Tracef("Received a new packet: % 02x\n", *attrs.Payload)
 		logrus.Tracef("    attrs.Prefix: %s\n", *attrs.Prefix)
 
-		traceEvt, err := newTraceEvent(attrs)
+		traceEvt, err := newTraceEvent(d, attrs, cfg.IPFamily)
 		if err != nil {
 			logrus.Debugf("Invalid nfla: %v", err)
 			return 0
@@ -273,17 +280,16 @@ func main() {
 		// and then no need to reprint it on subsequent trace events (that would make the output
 		// noisy).
 		if traceEvt.tableName == "raw" {
-			pr.printPacketHeaders(traceEvt, cfg.IPFamily, ifaceCache)
+			pr.printPacketHeaders(traceEvt)
 		}
 
-		if len(cfg.Chains) == 0 {
+		if len(cfg.FilterChains) == 0 {
 			pr.printIptRule(traceEvt, cfg.IPFamily)
-			return 0
-		}
-
-		for _, filter := range cfg.Chains {
-			if traceEvt.tableName == filter[0] && traceEvt.chainName == filter[1] {
-				pr.printIptRule(traceEvt, cfg.IPFamily)
+		} else {
+			for _, filter := range cfg.FilterChains {
+				if traceEvt.tableName == filter[0] && traceEvt.chainName == filter[1] {
+					pr.printIptRule(traceEvt, cfg.IPFamily)
+				}
 			}
 		}
 
@@ -298,6 +304,8 @@ func main() {
 
 		logrus.Errorf("Could not receive nflog messages: %v", err)
 		applyReverters(reverters)
+		// TODO: revert /proc/sys/net/netfilter/nf_log/* + drain the multicast group to make sure next run won't get
+		// stale traces.
 		os.Exit(1)
 
 		return 1 // Unreachable -- just to make Go compiler happy
@@ -323,14 +331,25 @@ func main() {
 }
 
 type traceEvent struct {
-	attrs     nflog.Attribute
-	tableName string
-	chainName string
+	attrs      nflog.Attribute
+	pkt        packet
+	inDev      uint32
+	outDev     uint32
+	physInDev  uint32
+	physOutDev uint32
+	nfMark     uint32
+	tableName  string
+	chainName  string
+	// traceType is either policy, rule or return
 	traceType string
 	ruleNum   int
 }
 
-func newTraceEvent(attrs nflog.Attribute) (traceEvent, error) {
+func (traceEvt traceEvent) ifaces() [2]uint32 {
+	return [2]uint32{traceEvt.inDev, traceEvt.outDev}
+}
+
+func newTraceEvent(d PacketDecoder, attrs nflog.Attribute, family IPFamily) (traceEvent, error) {
 	if attrs.Prefix == nil || !strings.HasPrefix(*attrs.Prefix, "TRACE: ") {
 		return traceEvent{}, errors.New("not a trace event")
 	}
@@ -350,13 +369,30 @@ func newTraceEvent(attrs nflog.Attribute) (traceEvent, error) {
 		return traceEvent{}, fmt.Errorf("invalid trace type: %q (prefix: %s)", traceType, prefix)
 	}
 
+	pkt, err := d.Decode(*attrs.Payload, family)
+	if err != nil {
+		return traceEvent{}, nil
+	}
+
 	return traceEvent{
-		attrs:     attrs,
-		tableName: splitPrefix[0],
-		chainName: splitPrefix[1],
-		traceType: splitPrefix[2],
-		ruleNum:   mustAtoi(splitPrefix[3]),
+		pkt:        pkt,
+		inDev:      derefUint32Or(attrs.InDev, 0),
+		outDev:     derefUint32Or(attrs.OutDev, 0),
+		physInDev:  derefUint32Or(attrs.PhysInDev, 0),
+		physOutDev: derefUint32Or(attrs.PhysOutDev, 0),
+		nfMark:     derefUint32Or(attrs.Mark, 0),
+		tableName:  splitPrefix[0],
+		chainName:  splitPrefix[1],
+		traceType:  splitPrefix[2],
+		ruleNum:    mustAtoi(splitPrefix[3]),
 	}, nil
+}
+
+func derefUint32Or(p *uint32, d uint32) uint32 {
+	if p == nil {
+		return d
+	}
+	return *p
 }
 
 func mustAtoi(s string) int {

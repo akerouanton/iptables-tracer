@@ -19,8 +19,6 @@ Build: `make`. The binary file will be located in bin/.
 
 ## How to use
 
-Example:
-
 ```console
 $ sudo iptables-tracer -filter='tcp port 8080'
 $ sudo iptables-tracer -family ipv6 filter='icmp6'
@@ -54,4 +52,36 @@ $ sudo iptables-tracer -family ipv6 -iface=br-21502e5b2c6c -filter='icmp6 and (i
 
 # Execute iptables-tracer into a specific container
 $ sudo iptables-tracer -netns="$(docker inspect --format='{{ .NetworkSettings.SandboxKey }}' tender_merkle)" -family ipv6
+```
+
+## Example
+
+```console
+$ sudo iptables-tracer -netns="$(docker inspect --format='{{ .NetworkSettings.SandboxKey }}' tender_merkle)" -family ipv4 -filter="tcp port 1242"
+INFO[0000] Tracer switched to netns /var/run/docker/netns/e859696c843d. Forking.. 
+INFO[0000] Waiting for trace events...                  
+IN=hairpin-8-2 OUT= SRC=172.22.0.2 DST=172.17.0.3 LEN=60 TOS=00 TTL=64 ID=3588 PROTO=TCP SPT=53920 DPT=1242 FLAGS=SYN SEQ=3083952015 CSUM=585b 
+	raw PREROUTING NFMARK=0x0 
+		DEFAULT POLICY
+		=> ACCEPT
+	nat PREROUTING NFMARK=0x0 
+		MATCH RULE (#1): -m addrtype --dst-type LOCAL -j DOCKER
+		=> DOCKER
+	nat DOCKER NFMARK=0x0 
+		MATCH RULE (#1): -p tcp -m tcp --dport 1242 -j DNAT --to-destination 172.23.0.2:1242
+		=> DNAT: --to-destination 172.23.0.2:1242
+	filter FORWARD NFMARK=0x0 IN=hairpin-8-2 OUT=hairpin-8-1 (changed by last rule)
+		MATCH RULE (#1): -j DOCKER-USER
+		=> DOCKER-USER
+	filter DOCKER-USER NFMARK=0x0 
+		=> RETURN
+	filter FORWARD NFMARK=0x0 
+		MATCH RULE (#2): -j DOCKER-ISOLATION-STAGE-1
+		=> DOCKER-ISOLATION-STAGE-1
+	filter DOCKER-ISOLATION-STAGE-1 NFMARK=0x0 
+		MATCH RULE (#2): -i hairpin-8-2 ! -o hairpin-8-2 -j DOCKER-ISOLATION-STAGE-2
+		=> DOCKER-ISOLATION-STAGE-2
+	filter DOCKER-ISOLATION-STAGE-2 NFMARK=0x0 
+		MATCH RULE (#1): -o hairpin-8-1 -j DROP
+		=> DROP
 ```
