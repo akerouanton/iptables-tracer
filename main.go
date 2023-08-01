@@ -152,9 +152,13 @@ type Config struct {
 
 func insNfNetlinkLog() {
 	cmd := exec.Command("modprobe", "nfnetlink_log")
-	err := cmd.Run()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		logrus.Fatal(err)
+		if e, ok := err.(*exec.ExitError); ok {
+			logrus.Fatalf("Could not modprobe nfnetlink_log (exit code: %d): %s", e.ExitCode(), string(out))
+		} else {
+			logrus.Fatalf("Could not modprobe nfnetlink_log: %v", err)
+		}
 	}
 }
 
