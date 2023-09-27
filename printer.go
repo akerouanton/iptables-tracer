@@ -66,8 +66,7 @@ func (pr Printer) printIptRule(traceEvt traceEvent, family IPFamily) {
 
 	chain, err := GetIptChain(family, traceEvt.tableName, traceEvt.chainName)
 	if err != nil {
-		logrus.Errorf("Could not get iptables chain %s from table %s: %s",
-			traceEvt.chainName, traceEvt.tableName, err)
+		logrus.Errorf("Could not get iptables chain %s from table %s: %s", traceEvt.chainName, traceEvt.tableName, err)
 	}
 
 	if traceEvt.traceType == "policy" {
