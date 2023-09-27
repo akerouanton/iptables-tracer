@@ -131,6 +131,7 @@ var (
 	flagPrintRaw          bool
 	flagPrintPhys         bool
 	flagPrintIfaceChanges bool
+	flagSkipModprobe      bool
 	flagLogLvl            string
 )
 
@@ -155,9 +156,9 @@ func insNfNetlinkLog() {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if e, ok := err.(*exec.ExitError); ok {
-			logrus.Fatalf("Could not modprobe nfnetlink_log (exit code: %d): %s", e.ExitCode(), string(out))
+			logrus.Fatalf("Could not modprobe nfnetlink_log (exit code: %d): %s. You can pass -skip-modprobe if you think that's not needed.", e.ExitCode(), string(out))
 		} else {
-			logrus.Fatalf("Could not modprobe nfnetlink_log: %v", err)
+			logrus.Fatalf("Could not modprobe nfnetlink_log: %v. You can pass -skip-modprobe if you think that's not needed.", err)
 		}
 	}
 }
@@ -199,12 +200,29 @@ func main() {
 	flag.BoolVar(&flagPrintRaw, "print-raw", true, "Whether raw iptables rules should be printed when packets hit them")
 	flag.BoolVar(&flagPrintPhys, "print-phys", false, "Whether physin/physout should be printed")
 	flag.BoolVar(&flagPrintIfaceChanges, "print-iface-changes", true, "Whether iface changes should be printed. WARNING: memory will grow unbounded.")
+	flag.BoolVar(&flagSkipModprobe, "skip-modprobe", false, "Whether iptables-tracer should try to modprobe nfnetlink_log module")
 	flag.StringVar(&flagLogLvl, "log-level", "info", "Log level (panic, fatal, error, warn, info, debug or trace)")
 	flag.Parse()
 
 	cfg := parseFlags()
 
-	insNfNetlinkLog()
+	if !flagSkipModprobe {
+		insNfNetlinkLog()
+
+		// github.com/florianl/go-nflog doesn't set the right value in  /proc/sys/net/netfilter/nf_log/*
+		// If we don't set it, no packets will be transmitted to nfnetlink_log, making the tracer useless.
+		if cfg.IPFamily == AfInet4 {
+			if err := os.WriteFile("/proc/sys/net/netfilter/nf_log/2", []byte("nfnetlink_log"), 0644); err != nil {
+				logrus.Errorf("Could not set nfnetlink_log in /proc/sys/net/netfilter/nf_log/2: %v", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := os.WriteFile("/proc/sys/net/netfilter/nf_log/10", []byte("nfnetlink_log"), 0644); err != nil {
+				logrus.Errorf("Could not set nfnetlink_log in /proc/sys/net/netfilter/nf_log/10: %v", err)
+				os.Exit(1)
+			}
+		}
+	}
 
 	if cfg.NetnsPath != "" {
 		handle, err := netns.GetFromPath(cfg.NetnsPath)
@@ -218,20 +236,6 @@ func main() {
 		}
 		logrus.Infof("Tracer switched to netns %s. Forking..", cfg.NetnsPath)
 		reexecSelf()
-	}
-
-	// github.com/florianl/go-nflog doesn't set the right value in  /proc/sys/net/netfilter/nf_log/*
-	// If we don't set it, no packets will be transmitted to nfnetlink_log, making the tracer useless.
-	if cfg.IPFamily == AfInet4 {
-		if err := os.WriteFile("/proc/sys/net/netfilter/nf_log/2", []byte("nfnetlink_log"), 0644); err != nil {
-			logrus.Errorf("Could not set nfnetlink_log in /proc/sys/net/netfilter/nf_log/2: %v", err)
-			os.Exit(1)
-		}
-	} else {
-		if err := os.WriteFile("/proc/sys/net/netfilter/nf_log/10", []byte("nfnetlink_log"), 0644); err != nil {
-			logrus.Errorf("Could not set nfnetlink_log in /proc/sys/net/netfilter/nf_log/10: %v", err)
-			os.Exit(1)
-		}
 	}
 
 	reverters, err := setupIptRules(cfg.IPFamily, cfg.FlushRaw, cfg.FilterIfaces, cfg.Filter)
