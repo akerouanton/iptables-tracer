@@ -11,11 +11,11 @@ This program will help you see packets going through your iptables rules. It sup
 
 ## Install
 
-Prerequisites:
-
-* Arch Linux: `libpcap` / Ubuntu: `libpcap0.8`
-
-Build: `make`. The binary file will be located in bin/.
+```shell
+$ wget -O iptables-tracer https://github.com/akerouanton/iptables-tracer/releases/download/v0.1/iptables-tracer-amd64
+$ sudo mv iptables-tracer /usr/local/sbin/iptables-tracer
+$ sudo chown +x /usr/local/sbin/iptables-tracer
+```
 
 ## How to use
 
@@ -44,7 +44,7 @@ Usage of iptables-tracer:
     	Whether raw iptables rules should be printed when packets hit them (default true)
 ```
 
-One-liners:
+### One-liners
 
 ```console
 # Trace only IPv6 Neighbor Solicitation & Neighbor Advertisment 
@@ -52,9 +52,15 @@ $ sudo iptables-tracer -family ipv6 -iface=br-21502e5b2c6c -filter='icmp6 and (i
 
 # Execute iptables-tracer into a specific container
 $ sudo iptables-tracer -netns="$(docker inspect --format='{{ .NetworkSettings.SandboxKey }}' tender_merkle)" -family ipv6
+
+# Trace connections to port 8080 going through iface eth0
+$ sudo iptables-tracer -iface eth0 -filter 'port 8080'
+
+# Trace ICMP packets
+$ sudo iptables-tracer -filter icmp
 ```
 
-## Example
+### Example
 
 ```console
 $ sudo iptables-tracer -netns="$(docker inspect --format='{{ .NetworkSettings.SandboxKey }}' tender_merkle)" -family ipv4 -filter="tcp port 1242"
