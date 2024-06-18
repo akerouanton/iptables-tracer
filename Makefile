@@ -1,4 +1,4 @@
-IMAGE_TAG = akerouanton/iptables-tracer:latest
+IMAGE_TAG = albinkerouanton006/iptables-tracer:latest
 BUILD_OPTS =
 
 ifdef BUILDER
@@ -8,7 +8,7 @@ endif
 .PHONY: binary
 binary:
 	if [ ! -d bin/ ]; then mkdir bin; fi
-	docker build ${BUILD_OPTS} -t ${IMAGE_TAG} --target=binary .
+	docker build --push --platform linux/amd64,linux/arm64 ${BUILD_OPTS} -t ${IMAGE_TAG} --target=binary .
 	undock --include=/bin docker-daemon://${IMAGE_TAG} .
 
 install:

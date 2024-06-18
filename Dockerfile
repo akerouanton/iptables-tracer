@@ -18,7 +18,8 @@ COPY . /build
 ENV LD_LIBRARY_PATH="-L/build/libpcap-${LIBPCAP_VERSION}" \
     CGO_LDFLAGS="-L/build/libpcap-${LIBPCAP_VERSION}" \
     CGO_CPPFLAGS="-I/build/libpcap-${LIBPCAP_VERSION}"
-RUN GOOS=linux GOARCH=amd64 go build -ldflags "-linkmode 'external' -extldflags '-static' -s -w" -o bin/iptables-tracer .
+ARG TARGETOS TARGETARCH
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-linkmode 'external' -extldflags '-static' -s -w" -o bin/iptables-tracer .
 
 ####################
 
