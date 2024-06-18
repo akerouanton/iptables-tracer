@@ -261,7 +261,7 @@ func main() {
 		// "nfnetlink_log always uses group 0"
 		Group:    0,
 		Copymode: nflog.CopyPacket,
-		Bufsize:  65536,
+		Bufsize:  655360,
 	})
 	if err != nil {
 		logrus.Error(err)

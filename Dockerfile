@@ -13,13 +13,15 @@ RUN wget http://www.tcpdump.org/release/libpcap-${LIBPCAP_VERSION}.tar.gz && \
     ./configure && \
     make
 
-COPY . /build
+COPY cmd/* /build
 
 ENV LD_LIBRARY_PATH="-L/build/libpcap-${LIBPCAP_VERSION}" \
     CGO_LDFLAGS="-L/build/libpcap-${LIBPCAP_VERSION}" \
     CGO_CPPFLAGS="-I/build/libpcap-${LIBPCAP_VERSION}"
 ARG TARGETOS TARGETARCH
-RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-linkmode 'external' -extldflags '-static' -s -w" -o bin/iptables-tracer .
+RUN --mount=type=bind,source=go.mod,target=go.mod \
+    --mount=type=bind,source=go.sum,target=go.sum \
+    GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-linkmode 'external' -extldflags '-static' -s -w" -o bin/iptables-tracer .
 
 ####################
 

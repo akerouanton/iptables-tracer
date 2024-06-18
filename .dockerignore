@@ -2,4 +2,4 @@
 
 !go.mod
 !go.sum
-!*.go
+!cmd/
