@@ -25,6 +25,26 @@ RUN --mount=type=bind,source=go.mod,target=go.mod \
 
 ####################
 
-FROM scratch AS binary
+FROM alpine AS final
 WORKDIR /bin
 COPY --from=build /build/bin/iptables-tracer /bin/
+
+RUN <<EOF
+# iptables provides libxt_bpf.so, and iptables-legacy provides the legacy iptables
+# binary.
+apk add --no-cache iptables iptables-legacy
+
+# Then delete iptables symlink (it points to iptables-nft), and replace it with
+# a link to the legacy version.
+rm /sbin/iptables /sbin/ip6tables
+ln -s /sbin/iptables-legacy /sbin/iptables
+ln -s /sbin/ip6tables-legacy /sbin/ip6tables
+
+rm /sbin/iptables-save /sbin/ip6tables-save
+ln -s /sbin/iptables-legacy-save /sbin/iptables-save
+ln -s /sbin/ip6tables-legacy-save /sbin/ip6tables-save
+EOF
+
+COPY modprobe.sh /usr/sbin/modprobe
+
+ENTRYPOINT ["iptables-tracer"]

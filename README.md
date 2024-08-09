@@ -19,6 +19,8 @@ $ sudo chown +x /usr/local/sbin/iptables-tracer
 
 ## How to use
 
+Standalone binary:
+
 ```console
 $ sudo iptables-tracer -filter='tcp port 8080'
 $ sudo iptables-tracer -family ipv6 filter='icmp6'
@@ -43,6 +45,22 @@ Usage of iptables-tracer:
   -print-raw
     	Whether raw iptables rules should be printed when packets hit them (default true)
 ```
+
+If you want to use the Docker image `albinkerouanton006/iptables-tracer`, you'll need to manually set the following sysctls:
+
+- `net.netfilter.nf_log.2=nfnetlink_log`
+- `net.netfilter.nf_log.10=nfnetlink_log`
+
+If you want to run that image to debug a DinD issue, you need to pass these sysctls to the dind container through `--sysctl=...`.
+
+```console
+$ docker run --rm -it --net=host --privileged albinkerouanton006/iptables-tracer -family ipv6 -filter 'tcp port 8000'
+
+# To attach to a dind container, first grab the container ID
+$ docker run --rm -it --net=container:<dind_cid> --privileged albinkerouanton006/iptables-tracer -family ipv6 -filter 'tcp port 8000'
+```
+
+If you see that `iptables-tracer` doesn't start correctly (it's spinning forever), or if you see an error message about procfs not being writable, you should try to add `-skip-modprobe`. In that case, you'll need to make sure the above sysctls are properly set and eventually load the kernel module `nfnetlink_log` manually.
 
 ### One-liners
 
