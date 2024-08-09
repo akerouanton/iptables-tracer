@@ -73,9 +73,15 @@ func (pr Printer) printIptRule(traceEvt traceEvent, family IPFamily) {
 		b.WriteString("\t\tDEFAULT POLICY")
 		b.WriteString(fmt.Sprintf("\n\t\t=> %s", color.HiGreenString(chain.Policy)))
 	} else if traceEvt.traceType == "rule" {
+		b.WriteString(fmt.Sprintf("\t\tMATCH RULE (#%d)", traceEvt.ruleNum))
+
+		if len(chain.Rules) < traceEvt.ruleNum {
+			b.WriteString(": (rule not found)")
+			goto print
+		}
+
 		rule := chain.Rules[traceEvt.ruleNum-1]
 
-		b.WriteString(fmt.Sprintf("\t\tMATCH RULE (#%d)", traceEvt.ruleNum))
 		if pr.printRaw {
 			b.WriteString(fmt.Sprintf(": %s", rule))
 		}
@@ -98,6 +104,7 @@ func (pr Printer) printIptRule(traceEvt traceEvent, family IPFamily) {
 		b.WriteString(fmt.Sprintf("\t\t=> %s", color.HiBlueString("RETURN")))
 	}
 
+print:
 	fmt.Println(b.String())
 }
 
