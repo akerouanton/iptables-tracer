@@ -6,7 +6,7 @@ RUN apt-get update && \
 
 WORKDIR /build
 
-ENV LIBPCAP_VERSION=1.10.4
+ENV LIBPCAP_VERSION=1.10.5
 RUN wget http://www.tcpdump.org/release/libpcap-${LIBPCAP_VERSION}.tar.gz && \
     tar xvf libpcap-${LIBPCAP_VERSION}.tar.gz && \
     cd libpcap-${LIBPCAP_VERSION} && \
