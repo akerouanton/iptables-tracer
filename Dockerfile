@@ -25,7 +25,7 @@ RUN --mount=type=bind,source=go.mod,target=go.mod \
 
 ####################
 
-FROM alpine AS final
+FROM alpine:3.20 AS final
 WORKDIR /bin
 COPY --from=build /build/bin/iptables-tracer /bin/
 
