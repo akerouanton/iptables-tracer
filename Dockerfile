@@ -1,4 +1,4 @@
-FROM golang:1.22-bookworm AS build
+FROM golang:1.22.7-bookworm AS build
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends bison flex && \
