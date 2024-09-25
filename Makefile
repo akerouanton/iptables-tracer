@@ -17,7 +17,8 @@ push:
 .PHONY: binary
 binary: build
 	if [ ! -d bin/ ]; then mkdir bin; fi
-	undock --include=/bin docker-daemon://${IMAGE} .
+	docker run --rm -v $(shell pwd):/undock -w /undock crazymax/undock:latest \
+		--include=/bin/iptables-tracer $(IMAGE) /undock
 
 install:
 	sudo cp bin/iptables-tracer /usr/local/sbin/iptables-tracer
