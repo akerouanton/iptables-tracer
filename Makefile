@@ -1,4 +1,5 @@
-IMAGE_TAG = albinkerouanton006/iptables-tracer:latest
+IMAGE_TAG ?= latest
+IMAGE = albinkerouanton006/iptables-tracer:$(IMAGE_TAG)
 BUILD_OPTS =
 
 ifdef BUILDER
@@ -7,16 +8,16 @@ endif
 
 .PHONY: build
 build:
-	docker build --platform linux/amd64,linux/arm64 --load ${BUILD_OPTS} -t ${IMAGE_TAG} --target=final .
+	docker build --platform linux/amd64,linux/arm64 --load ${BUILD_OPTS} -t ${IMAGE} --target=final .
 
 .PHONY: push
 push:
-	docker push $(IMAGE_TAG)
+	docker push $(IMAGE)
 
 .PHONY: binary
-binary: build-push
+binary: build
 	if [ ! -d bin/ ]; then mkdir bin; fi
-	undock --include=/bin docker-daemon://${IMAGE_TAG} .
+	undock --include=/bin docker-daemon://${IMAGE} .
 
 install:
 	sudo cp bin/iptables-tracer /usr/local/sbin/iptables-tracer
