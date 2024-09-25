@@ -54,9 +54,10 @@ If you want to use the Docker image `albinkerouanton006/iptables-tracer`, you'll
 If you want to run that image to debug a DinD issue, you need to pass these sysctls to the dind container through `--sysctl=...`.
 
 ```console
-$ docker run --rm -it --net=host --privileged albinkerouanton006/iptables-tracer -family ipv6 -filter 'tcp port 8000'
+# First, change the required sysctls:
+$ docker exec <dind_cid> sysctl net.netfilter.nf_log.2=nfnetlink_log net.netfilter.nf_log.10=nfnetlink_log
 
-# To attach to a dind container, first grab the container ID
+# Then, attach to a dind container:
 $ docker run --rm -it --net=container:<dind_cid> --privileged albinkerouanton006/iptables-tracer -family ipv6 -filter 'tcp port 8000'
 ```
 
