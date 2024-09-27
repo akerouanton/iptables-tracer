@@ -12,7 +12,7 @@ This program will help you see packets going through your iptables rules. It sup
 ## Install
 
 ```shell
-$ wget -O iptables-tracer https://github.com/akerouanton/iptables-tracer/releases/download/v0.1/iptables-tracer-amd64
+$ wget -O iptables-tracer https://github.com/akerouanton/iptables-tracer/releases/download/v0.2/iptables-tracer-amd64
 $ sudo mv iptables-tracer /usr/local/sbin/iptables-tracer
 $ sudo chmod +x /usr/local/sbin/iptables-tracer
 ```
