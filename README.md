@@ -14,7 +14,7 @@ This program will help you see packets going through your iptables rules. It sup
 ```shell
 $ wget -O iptables-tracer https://github.com/akerouanton/iptables-tracer/releases/download/v0.1/iptables-tracer-amd64
 $ sudo mv iptables-tracer /usr/local/sbin/iptables-tracer
-$ sudo chown +x /usr/local/sbin/iptables-tracer
+$ sudo chmod +x /usr/local/sbin/iptables-tracer
 ```
 
 ## How to use
@@ -55,7 +55,8 @@ If you want to run that image to debug a DinD issue, you need to pass these sysc
 
 ```console
 # First, change the required sysctls:
-$ docker exec <dind_cid> sysctl net.netfilter.nf_log.2=nfnetlink_log net.netfilter.nf_log.10=nfnetlink_log
+$ docker exec <dind_cid> sysctl net.netfilter.nf_log.2=nfnetlink_log \
+	net.netfilter.nf_log.10=nfnetlink_log
 
 # Then, attach to a dind container:
 $ docker run --rm -it --net=container:<dind_cid> --privileged albinkerouanton006/iptables-tracer -family ipv6 -filter 'tcp port 8000'
